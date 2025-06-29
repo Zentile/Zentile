@@ -6,7 +6,8 @@ A highly optimized, containerized grid-based homepage built with Nuxt 3 and self
 
 - 🏠 **Beautiful grid-based homepage** with responsive design
 - 🔧 **Self-hosted Convex backend** for real-time data management
-- 🐳 **Optimized Docker setup** with multi-stage builds
+- � **Auto-generated admin keys** for seamless setup
+- �🐳 **Optimized Docker setup** with multi-stage builds
 - 🚀 **GitHub Actions CI/CD** with automated image builds
 - 📦 **Minimal container size** (~50MB final image)
 - 🔒 **Security scanning** with Trivy vulnerability detection
@@ -23,10 +24,10 @@ git clone <your-repo-url>
 cd zengrid
 
 # Deploy with pre-built image from GHCR
-./deploy.sh
+npm run docker:prod
 
-# Or specify a tag
-./deploy.sh v1.0.0
+# Or with dashboard enabled
+npm run docker:prod-with-dashboard
 ```
 
 ### Option 2: Local Development
@@ -36,16 +37,55 @@ cd zengrid
 git clone <your-repo-url>
 cd zengrid
 
-# Run automated setup
-./setup.sh
-
-# Or manual setup
+# Install dependencies and start services
 npm install
-docker compose up -d
-docker compose exec convex-backend ./generate_admin_key.sh
-# Add admin key to .env.local
-npx convex dev
+npm run docker:dev
+
+# The admin key will be automatically generated on first run
+# You can view it in the logs:
+npm run docker:logs
+
+# Start convex development
+npm run convex:deploy
 ```
+
+## 🔑 Admin Key Management
+
+The ZenGrid setup automatically generates a Convex admin key for you during the first startup. This key is required for the frontend to communicate with the self-hosted Convex backend.
+
+### How It Works
+
+1. **Automatic Generation**: On first run, an `admin-key-generator` service creates a secure random admin key
+2. **Persistent Storage**: The key is stored in a Docker volume and persists across container restarts
+3. **Secure Access**: The key is only accessible to the ZenGrid container and is read-only
+
+### Manual Admin Key Management
+
+If you need to regenerate or manually set an admin key:
+
+```bash
+# View the current admin key
+docker compose exec admin-key-generator cat /shared/admin_key
+
+# Regenerate the admin key (stops all services first)
+docker compose down
+docker volume rm zengrid_admin_keys
+docker compose up -d
+
+# Set a custom admin key (for production)
+echo "your-custom-admin-key" | docker compose exec -T admin-key-generator tee /shared/admin_key
+```
+
+### Development with Custom Key
+
+For local development with a specific key, create a `.env.local` file:
+
+```bash
+CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+CONVEX_SELF_HOSTED_ADMIN_KEY=your-custom-key
+```
+
+When using `.env.local`, the file-based key generation is bypassed.
 
 ## 🌐 Service Access
 
@@ -98,7 +138,7 @@ The project includes automated workflows:
 - **📦 Container Build**: Multi-arch images pushed to GHCR
 - **🔒 Security Scanning**: Vulnerability detection with Trivy
 
-Images are automatically built and pushed to `ghcr.io/<username>/zengrid:latest`
+Images are automatically built and pushed to `ghcr.io/zengrid/zengrid:latest`
 
 ### Configuration Files
 
@@ -120,8 +160,8 @@ Images are automatically built and pushed to `ghcr.io/<username>/zengrid:latest`
 zengrid/
 ├── 🐳 Docker Configuration
 │   ├── Dockerfile             # Multi-stage build
-│   ├── docker-compose.yml     # Development
-│   ├── docker-compose.prod.yml # Production
+│   ├── docker-compose.yml     # Development with auto admin key
+│   ├── docker-compose.prod.yml # Production with auto admin key
 │   └── .dockerignore          # Build optimization
 ├── 🔧 Convex Backend
 │   ├── convex/schema.ts       # Database schema
@@ -132,10 +172,8 @@ zengrid/
 │   ├── assets/css/           # Styling
 │   ├── plugins/convex.client.ts # Client setup
 │   └── nuxt.config.ts        # Optimized config
-├── 🚀 CI/CD & Scripts
-│   ├── .github/workflows/    # GitHub Actions
-│   ├── setup.sh             # Development setup
-│   └── deploy.sh            # Production deployment
+├── 🚀 CI/CD & Automation
+│   └── .github/workflows/    # GitHub Actions
 └── 📄 Configuration
     ├── .env                 # Environment variables
     ├── .env.local.example   # Local template
@@ -160,14 +198,19 @@ REDACT_LOGS_TO_CLIENT=true
 RUST_LOG=info
 
 # Container image
-ZENGRID_IMAGE=ghcr.io/username/zengrid:latest
+ZENGRID_IMAGE=ghcr.io/zengrid/zengrid:latest
 ```
 
 #### Local Development (.env.local)
 
 ```bash
 CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
-CONVEX_SELF_HOSTED_ADMIN_KEY=<generated-key>
+
+# Optional: Override auto-generated admin key
+# CONVEX_SELF_HOSTED_ADMIN_KEY=custom-admin-key
+
+# Note: Admin key is auto-generated if not specified
+# Check logs with: docker compose logs admin-key-generator
 ```
 
 ### Database Options
@@ -199,7 +242,7 @@ MYSQL_URL=mysql://user:pass@host:3306
 1. **Pull and Deploy**:
 
    ```bash
-   ./deploy.sh latest
+   npm run docker:prod
    ```
 
 2. **Configure Domain** (Optional):

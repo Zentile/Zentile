@@ -1,4 +1,23 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { readFileSync } from 'fs'
+
+// Helper function to get admin key from file or environment variable
+function getConvexAdminKey(): string | undefined {
+  const keyFile = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY_FILE
+  const keyEnv = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY
+  
+  if (keyFile) {
+    try {
+      return readFileSync(keyFile, 'utf8').trim()
+    } catch (error) {
+      console.warn(`Failed to read admin key from file ${keyFile}:`, error)
+      return keyEnv
+    }
+  }
+  
+  return keyEnv
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: process.env.NODE_ENV === 'development' },
@@ -7,7 +26,7 @@ export default defineNuxtConfig({
   // Runtime configuration for Convex
   runtimeConfig: {
     // Private keys (only available on server-side)
-    convexAdminKey: process.env.CONVEX_SELF_HOSTED_ADMIN_KEY,
+    convexAdminKey: getConvexAdminKey(),
     // Public keys (exposed to client-side)
     public: {
       convexUrl: process.env.CONVEX_SELF_HOSTED_URL || 'http://127.0.0.1:3210'

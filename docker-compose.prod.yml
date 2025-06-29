@@ -75,15 +75,19 @@ services:
     restart: unless-stopped
     ports:
       - "${NUXT_PORT:-3000}:3000"
+    volumes:
+      - admin_keys:/shared:ro
     environment:
       - CONVEX_SELF_HOSTED_URL=http://convex-backend:3210
-      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+      - CONVEX_SELF_HOSTED_ADMIN_KEY_FILE=/shared/admin_key
       - NUXT_HOST=0.0.0.0
       - NUXT_PORT=3000
       - NODE_ENV=production
     depends_on:
       convex-backend:
         condition: service_healthy
+      admin-key-generator:
+        condition: service_completed_successfully
     networks:
       - grid-network
     healthcheck:
@@ -99,8 +103,33 @@ services:
         reservations:
           memory: 128M
 
+  # Admin Key Generator (runs once to generate the admin key)
+  admin-key-generator:
+    image: curlimages/curl:latest
+    volumes:
+      - admin_keys:/shared
+    command: >
+      sh -c "
+      if [ ! -f /shared/admin_key ]; then
+        echo 'Generating new admin key...'
+        # Generate a secure random key
+        ADMIN_KEY=$$(head -c 32 /dev/urandom | base64 | tr -d '=+/' | cut -c1-43)
+        echo $$ADMIN_KEY > /shared/admin_key
+        echo 'Admin key generated and saved to /shared/admin_key'
+        echo 'Admin key: '$$ADMIN_KEY
+      else
+        echo 'Admin key already exists, using existing key:'
+        cat /shared/admin_key
+      fi
+      "
+    restart: "no"
+    networks:
+      - grid-network
+
 volumes:
   convex_data:
+    driver: local
+  admin_keys:
     driver: local
 
 networks:

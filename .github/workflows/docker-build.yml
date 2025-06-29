@@ -33,6 +33,28 @@ jobs:
         npm install
         ls -la package-lock.json || echo "No package-lock.json generated"
 
+    - name: Generate Convex files
+      run: |
+        # Ensure the _generated directory exists
+        mkdir -p convex/_generated
+        
+        # Create minimal stub files needed for build
+        echo '/* eslint-disable */' > convex/_generated/api.js
+        echo 'import { anyApi } from "convex/server";' >> convex/_generated/api.js
+        echo 'export const api = anyApi;' >> convex/_generated/api.js
+        echo 'export const internal = anyApi;' >> convex/_generated/api.js
+        
+        echo 'export declare const api: any;' > convex/_generated/api.d.ts
+        echo 'export declare const internal: any;' >> convex/_generated/api.d.ts
+        
+        echo 'export { query, mutation, action, internalQuery, internalMutation, internalAction, httpAction } from "convex/server";' > convex/_generated/server.js
+        
+        echo 'export { query, mutation, action, internalQuery, internalMutation, internalAction, httpAction } from "convex/server";' > convex/_generated/server.d.ts
+        
+        # List files for debugging
+        echo "Generated Convex files:"
+        ls -la convex/_generated/
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 

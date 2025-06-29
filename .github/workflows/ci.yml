@@ -23,6 +23,24 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
+    - name: Generate Convex files
+      run: |
+        # Ensure the _generated directory exists
+        mkdir -p convex/_generated
+        
+        # Create minimal stub files needed for build
+        echo '/* eslint-disable */' > convex/_generated/api.js
+        echo 'import { anyApi } from "convex/server";' >> convex/_generated/api.js
+        echo 'export const api = anyApi;' >> convex/_generated/api.js
+        echo 'export const internal = anyApi;' >> convex/_generated/api.js
+        
+        echo 'export declare const api: any;' > convex/_generated/api.d.ts
+        echo 'export declare const internal: any;' >> convex/_generated/api.d.ts
+        
+        echo 'export { query, mutation, action, internalQuery, internalMutation, internalAction, httpAction } from "convex/server";' > convex/_generated/server.js
+        
+        echo 'export { query, mutation, action, internalQuery, internalMutation, internalAction, httpAction } from "convex/server";' > convex/_generated/server.d.ts
+
     - name: Run type check
       run: npm run postinstall
 
@@ -37,6 +55,10 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -51,6 +73,18 @@ jobs:
 
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
+      if: always() && github.event_name != 'pull_request'
       with:
         sarif_file: 'trivy-results.sarif'
+
+    - name: Display Trivy scan results (fallback)
+      if: always()
+      run: |
+        echo "Trivy scan completed. Results:"
+        if [ -f "trivy-results.sarif" ]; then
+          echo "SARIF file generated successfully"
+          # Show a summary of findings
+          grep -o '"level":"[^"]*"' trivy-results.sarif | sort | uniq -c || echo "No security issues format found"
+        else
+          echo "No SARIF file generated"
+        fi

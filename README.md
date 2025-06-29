@@ -134,9 +134,9 @@ npm run docker:clean
 
 The project includes automated workflows:
 
-- **🔧 CI Pipeline**: Tests, builds, and security scans
-- **📦 Container Build**: Multi-arch images pushed to GHCR
-- **🔒 Security Scanning**: Vulnerability detection with Trivy
+- **🔧 CI Pipeline**: Tests, builds, and security scans with auto-generated Convex stubs
+- **📦 Container Build**: Multi-arch images pushed to GHCR with Convex file generation
+- **🔒 Security Scanning**: Vulnerability detection with Trivy (SARIF results uploaded to Security tab)
 
 Images are automatically built and pushed to `ghcr.io/zengrid/zengrid:latest`
 

@@ -1,0 +1,110 @@
+services:
+  # Convex Backend Service
+  convex-backend:
+    image: ghcr.io/get-convex/convex-backend:c1a7ac393888d743e704de56cf569a154b4526d4
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "${CONVEX_PORT:-3210}:3210"
+      - "${CONVEX_SITE_PROXY_PORT:-3211}:3211"
+    volumes:
+      - convex_data:/convex/data
+    environment:
+      - INSTANCE_NAME=${INSTANCE_NAME:-zengrid}
+      - INSTANCE_SECRET=${INSTANCE_SECRET:-}
+      - CONVEX_CLOUD_ORIGIN=${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${CONVEX_PORT:-3210}}
+      - CONVEX_SITE_ORIGIN=${CONVEX_SITE_ORIGIN:-http://127.0.0.1:${CONVEX_SITE_PROXY_PORT:-3211}}
+      - DISABLE_BEACON=${DISABLE_BEACON:-true}
+      - REDACT_LOGS_TO_CLIENT=${REDACT_LOGS_TO_CLIENT:-true}
+      - DO_NOT_REQUIRE_SSL=${DO_NOT_REQUIRE_SSL:-}
+      - POSTGRES_URL=${POSTGRES_URL:-}
+      - MYSQL_URL=${MYSQL_URL:-}
+      - RUST_LOG=${RUST_LOG:-info}
+      # S3 configuration (optional)
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - S3_STORAGE_EXPORTS_BUCKET=${S3_STORAGE_EXPORTS_BUCKET:-}
+      - S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET=${S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET:-}
+      - S3_STORAGE_MODULES_BUCKET=${S3_STORAGE_MODULES_BUCKET:-}
+      - S3_STORAGE_FILES_BUCKET=${S3_STORAGE_FILES_BUCKET:-}
+      - S3_STORAGE_SEARCH_BUCKET=${S3_STORAGE_SEARCH_BUCKET:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - grid-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Convex Dashboard Service (optional for production)
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:c1a7ac393888d743e704de56cf569a154b4526d4
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "${CONVEX_DASHBOARD_PORT:-6791}:6791"
+    environment:
+      - NEXT_PUBLIC_DEPLOYMENT_URL=${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:${CONVEX_PORT:-3210}}
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    networks:
+      - grid-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    profiles:
+      - dashboard
+
+  # ZenGrid Nuxt App
+  zengrid:
+    image: ${ZENGRID_IMAGE:-ghcr.io/mrvdog/zengrid:latest}
+    restart: unless-stopped
+    ports:
+      - "${NUXT_PORT:-3000}:3000"
+    environment:
+      - CONVEX_SELF_HOSTED_URL=http://convex-backend:3210
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+      - NUXT_HOST=0.0.0.0
+      - NUXT_PORT=3000
+      - NODE_ENV=production
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    networks:
+      - grid-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+volumes:
+  convex_data:
+    driver: local
+
+networks:
+  grid-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: grid-br0

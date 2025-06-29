@@ -1,0 +1,26 @@
+# Development overrides for docker-compose.yml
+services:
+  zengrid:
+    build:
+      target: builder
+      cache_from:
+        - node:20-alpine
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.nuxt
+      - /app/.output
+    environment:
+      - NODE_ENV=development
+    command: ["npm", "run", "dev"]
+    stdin_open: true
+    tty: true
+
+  convex-backend:
+    environment:
+      - RUST_LOG=debug
+      - DISABLE_BEACON=true
+    
+  convex-dashboard:
+    environment:
+      - NODE_ENV=development

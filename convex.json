@@ -1,0 +1,10 @@
+{
+  "project": "zengrid",
+  "prodUrl": null,
+  "functions": "convex/",
+  "generateCommonJSApi": false,
+  "node": {
+    "workingDirectory": "./",
+    "environment": "node"
+  }
+}

@@ -59,6 +59,7 @@ RUN set -ex && \
 COPY . .
 
 # Generate Convex types if needed
+RUN npm run convex:codegen
 RUN npm run postinstall
 
 # Build the application

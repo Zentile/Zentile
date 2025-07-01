@@ -47,7 +47,7 @@ services:
       - DISABLE_BEACON=${DISABLE_BEACON:-true}
       - REDACT_LOGS_TO_CLIENT=${REDACT_LOGS_TO_CLIENT:-true}
       - DO_NOT_REQUIRE_SSL=${DO_NOT_REQUIRE_SSL:-}
-      - POSTGRES_URL=postgres://convex:convex@postgres:5432
+      - POSTGRES_URL=${POSTGRES_URL:-postgres://convex:convex@postgres:5432}
       - MYSQL_URL=${MYSQL_URL:-}
       - RUST_LOG=${RUST_LOG:-info}
       # S3 configuration (optional)

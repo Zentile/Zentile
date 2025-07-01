@@ -1,35 +1,43 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-import { readFileSync } from 'fs'
+import fs from 'fs';
+import path from 'path';
 
-// Helper function to get admin key from file or environment variable
-function getConvexAdminKey(): string | undefined {
-  const keyFile = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY_FILE
-  const keyEnv = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY
-  
-  if (keyFile) {
-    try {
-      return readFileSync(keyFile, 'utf8').trim()
-    } catch (error) {
-      console.warn(`Failed to read admin key from file ${keyFile}:`, error)
-      return keyEnv
+const getAdminKey = () => {
+  const keyFile = process.env.CONVEX_SELF_HOSTED_ADMIN_KEY_FILE || '/shared/admin_key';
+  try {
+    const keyPath = path.resolve(keyFile);
+    if (fs.existsSync(keyPath)) {
+      const key = fs.readFileSync(keyPath, 'utf-8').trim();
+      if (key) {
+        const masked = key.length > 8 ? `${key.slice(0, 10)}...${key.slice(-10)}` : key;
+        console.log(`[ZenTile] Loaded Convex admin key from ${keyPath}: ${masked}`);
+      } else {
+        console.warn(`[ZenTile] Admin key file at ${keyPath} is empty.`);
+      }
+      return key;
+    } else {
+      console.warn(`[ZenTile] Admin key file not found at ${keyPath}`);
     }
+  } catch (e) {
+    console.error(`[ZenTile] Error reading admin key:`, e);
   }
-  
-  return keyEnv
-}
+  return undefined;
+};
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: process.env.NODE_ENV === 'development' },
   modules: ['@nuxt/icon', '@nuxt/fonts'],
   
-  // Runtime configuration for Convex
+  // Runtime configuration for client-side Convex
   runtimeConfig: {
-    // Private keys (only available on server-side)
-    convexAdminKey: getConvexAdminKey(),
     // Public keys (exposed to client-side)
     public: {
-      convexUrl: process.env.CONVEX_SELF_HOSTED_URL || 'http://127.0.0.1:3210'
+      // This should be set to the external URL that browsers can access
+      CONVEX_URL: process.env.NUXT_PUBLIC_CONVEX_URL || 'http://localhost:3210'
+    },
+    private: {
+      CONVEX_ADMIN_KEY: getAdminKey(),
     }
   },
 
@@ -76,7 +84,7 @@ export default defineNuxtConfig({
     head: {
       charset: 'utf-8',
       viewport: 'width=device-width, initial-scale=1',
-      title: 'ZenGrid',
+      title: 'ZenTile',
       meta: [
         { name: 'description', content: 'A modern grid-based homepage with self-hosted Convex' }
       ]

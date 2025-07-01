@@ -1,38 +1,37 @@
 {
-  "name": "zengrid",
+  "name": "zentile",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "nuxt build",
     "dev": "nuxt dev",
+    "build": "nuxt build",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "preinstall": "echo 'Installing dependencies...'",
-    "docker:build": "npm install && docker build -t zengrid .",
-    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
+    "docker:build": "npm install && docker build -t zentile .",
     "docker:prod": "docker compose -f docker-compose.prod.yml up -d",
-    "docker:prod-with-dashboard": "docker compose -f docker-compose.prod.yml --profile dashboard up -d",
     "docker:logs": "docker compose logs -f",
-    "docker:logs-zengrid": "docker compose logs -f zengrid",
+    "docker:logs-zentile": "docker compose logs -f zentile",
     "docker:logs-convex": "docker compose logs -f convex-backend",
-    "docker:status": "docker compose ps",
-    "docker:health": "docker compose ps && curl -f http://localhost:3000 && curl -f http://localhost:3210/version",
-    "docker:clean": "docker compose down -v && docker system prune -f",
-    "convex:deploy": "npx convex dev",
+    "docker:logs-convex-dev": "docker compose -f docker-compose.dev.yml logs -f convex-dev",
+    "docker:health": "curl -f http://localhost:3000/api/health && curl -f http://localhost:3210/version",
+    "docker:clean": "docker compose -f docker-compose.dev.yml down -v && docker system prune -f",
+    "get:admin-key": "docker compose -f docker-compose.dev.yml exec convex-dev cat /shared/admin_key || echo 'Admin key not found'",
     "convex:codegen": "npx convex codegen"
   },
   "dependencies": {
+    "@convex-vue/core": "^0.0.4",
     "@nuxt/fonts": "^0.11.4",
-    "@nuxt/icon": "^1.14.0",
-    "convex": "^1.25.0",
+    "@nuxt/icon": "^1.15.0",
+    "concurrently": "^9.2.0",
+    "convex": "^1.25.1",
     "nuxt": "^3.17.5",
     "vue": "^3.5.17",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
-    "@nuxt/devtools": "^1.5.0"
+    "@nuxt/devtools": "^1.7.0"
   }
 }

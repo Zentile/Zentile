@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build and Run ZenTile with Private Convex",
+			"type": "shell",
+			"command": "docker compose down && docker compose up --build -d && echo 'Services starting... Check status with: docker compose logs -f'",
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

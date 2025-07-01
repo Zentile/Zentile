@@ -1,18 +1,35 @@
-# 🏠 ZenGrid with Self-Hosted Convex
+# 🏠 ZenTile with Self-Hosted Convex
 
-A highly optimized, containerized grid-based homepage built with Nuxt 3 and self-hosted Convex backend. This project demonstrates modern DevOps practices with GitHub Actions, multi-stage Docker builds, and automated deployments.
+A highly optimized, containerized grid-based homepage built with Nuxt 3 and self-hosted Convex backend. Features **client-side Convex integration** with live updates and real-time reactivity.
 
 ## ✨ Features
 
 - 🏠 **Beautiful grid-based homepage** with responsive design
 - 🔧 **Self-hosted Convex backend** for real-time data management
-- � **Auto-generated admin keys** for seamless setup
-- �🐳 **Optimized Docker setup** with multi-stage builds
+- ⚡ **Client-side Convex integration** with native live updates and reactivity
+- 🌐 **Real-time updates** - changes appear instantly across all connected clients
+- 🛡️ **Auto-generated admin keys** for seamless setup
+- 🐳 **Optimized Docker setup** with multi-stage builds
 - 🚀 **GitHub Actions CI/CD** with automated image builds
 - 📦 **Minimal container size** (~50MB final image)
 - 🔒 **Security scanning** with Trivy vulnerability detection
 - ⚡ **High performance** with resource limits and health checks
 - 🎨 **Modern UI** with CSS Grid and clean styling
+
+## � Architecture
+
+This setup uses client-side Convex integration for optimal performance and live updates:
+
+- **Public Convex Backend**: Accessible from browsers for direct client connections
+- **Client-side Operations**: All Convex queries run directly in the browser with real-time subscriptions
+- **Live Updates**: Instant UI updates when data changes, no manual refresh needed
+- **WebSocket Connections**: Efficient real-time communication between client and Convex
+
+```
+[Browser/Client] ←→ WebSocket ←→ [Convex Backend]
+       ↓                              ↓
+  Live Updates                   Data Storage
+```
 
 ## 🚀 Quick Start
 
@@ -21,7 +38,7 @@ A highly optimized, containerized grid-based homepage built with Nuxt 3 and self
 ```bash
 # Clone and setup
 git clone <your-repo-url>
-cd zengrid
+cd zentile
 
 # Deploy with pre-built image from GHCR
 npm run docker:prod
@@ -35,7 +52,7 @@ npm run docker:prod-with-dashboard
 ```bash
 # Clone and setup
 git clone <your-repo-url>
-cd zengrid
+cd zentile
 
 # Install dependencies and start services
 npm install
@@ -51,13 +68,13 @@ npm run convex:deploy
 
 ## 🔑 Admin Key Management
 
-The ZenGrid setup automatically generates a Convex admin key for you during the first startup. This key is required for the frontend to communicate with the self-hosted Convex backend.
+The ZenTile setup automatically generates a Convex admin key for you during the first startup. This key is required for the frontend to communicate with the self-hosted Convex backend.
 
 ### How It Works
 
 1. **Automatic Generation**: On first run, an `admin-key-generator` service creates a secure random admin key
 2. **Persistent Storage**: The key is stored in a Docker volume and persists across container restarts
-3. **Secure Access**: The key is only accessible to the ZenGrid container and is read-only
+3. **Secure Access**: The key is only accessible to the ZenTile container and is read-only
 
 ### Manual Admin Key Management
 
@@ -69,36 +86,111 @@ docker compose exec admin-key-generator cat /shared/admin_key
 
 # Regenerate the admin key (stops all services first)
 docker compose down
-docker volume rm zengrid_admin_keys
+docker volume rm zentile_admin_keys
 docker compose up -d
 
 # Set a custom admin key (for production)
 echo "your-custom-admin-key" | docker compose exec -T admin-key-generator tee /shared/admin_key
 ```
 
-### Development with Custom Key
+### Development with Environment Setup
 
-For local development with a specific key, create a `.env.local` file:
+For local development, create a `.env.local` file:
 
 ```bash
+# Client-side Convex URL - must be accessible from browser
+# For Docker Compose development: http://localhost:3210
+# For production: https://convex.yourdomain.com
+NUXT_PUBLIC_CONVEX_URL=http://localhost:3210
+
+# Server-side Convex URL for admin operations (optional)
 CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+
+# Optional: Override auto-generated admin key
 CONVEX_SELF_HOSTED_ADMIN_KEY=your-custom-key
 ```
 
-When using `.env.local`, the file-based key generation is bypassed.
+**Important**: The `NUXT_PUBLIC_CONVEX_URL` must be accessible from the browser. In development with Docker Compose, this is `http://localhost:3210`. In production, you'll need to expose the Convex backend on a public domain.
 
 ## 🌐 Service Access
 
-- **🏠 ZenGrid**: http://localhost:3000
-- **🔧 Convex Backend**: http://localhost:3210
+- **🏠 ZenTile**: http://localhost:3000
+- **🔧 Convex Backend**: http://localhost:3210 (accessible from browser for client-side integration)
 - **📊 Convex Dashboard**: http://localhost:6791
+
+## 🔗 Client-Side Convex Integration
+
+ZenTile uses client-side Convex integration for optimal performance and real-time updates:
+
+### Architecture Overview
+
+```
+[Frontend/Browser] ←→ WebSocket ←→ [Convex Backend]
+       ↓                              ↓
+  Live Updates                   Data Storage
+```
+
+### Features
+
+- **Live Updates**: Changes appear instantly across all connected clients
+- **Real-time Subscriptions**: Automatic UI updates when data changes
+- **Offline Support**: Queries cache locally and sync when reconnected
+- **Optimistic Updates**: UI updates immediately for better user experience
+
+### Usage in Components
+
+```vue
+<script setup>
+import { api } from "~/convex/_generated/api";
+
+// Real-time query with automatic updates
+const {
+  data: gridItems,
+  isLoading,
+  error,
+} = useConvexQuery(api.gridItems.listGridItems, {});
+
+// Mutations for data changes
+const { mutate: createItem } = useConvexMutation(api.gridItems.createGridItem);
+
+// Create a new item (with live updates)
+const addItem = async () => {
+  await createItem({
+    title: "New Item",
+    description: "Description",
+    url: "https://example.com",
+  });
+  // UI automatically updates thanks to Convex reactivity!
+};
+</script>
+
+<template>
+  <div v-if="isLoading">Loading...</div>
+  <div v-else-if="error">Error: {{ error.message }}</div>
+  <div v-else>
+    <div v-for="item in gridItems" :key="item._id">
+      {{ item.title }}
+    </div>
+  </div>
+</template>
+```
+
+### Configuration Requirements
+
+**Important**: For client-side Convex to work, the Convex backend must be accessible from browsers. Set the environment variable:
+
+```bash
+# This URL must be reachable from the browser
+NUXT_PUBLIC_CONVEX_URL=http://localhost:3210  # Development
+NUXT_PUBLIC_CONVEX_URL=https://convex.yourdomain.com  # Production
+```
 
 ## 📦 Container Optimization
 
 ### Image Sizes (Approximate)
 
 - **Base Node.js**: ~120MB
-- **ZenGrid**: ~50MB (optimized!)
+- **ZenTile**: ~50MB (optimized!)
 - **Convex Backend**: ~100MB
 - **Total Runtime**: ~250MB
 
@@ -138,7 +230,7 @@ The project includes automated workflows:
 - **📦 Container Build**: Multi-arch images pushed to GHCR with Convex file generation
 - **🔒 Security Scanning**: Vulnerability detection with Trivy (SARIF results uploaded to Security tab)
 
-Images are automatically built and pushed to `ghcr.io/zengrid/zengrid:latest`
+Images are automatically built and pushed to `ghcr.io/zentile/zentile:latest`
 
 ### Configuration Files
 
@@ -157,7 +249,7 @@ Images are automatically built and pushed to `ghcr.io/zengrid/zengrid:latest`
 ## 🗂 Project Structure
 
 ```
-zengrid/
+zentile/
 ├── 🐳 Docker Configuration
 │   ├── Dockerfile             # Multi-stage build
 │   ├── docker-compose.yml     # Development with auto admin key
@@ -198,12 +290,16 @@ REDACT_LOGS_TO_CLIENT=true
 RUST_LOG=info
 
 # Container image
-ZENGRID_IMAGE=ghcr.io/zengrid/zengrid:latest
+ZenTile_IMAGE=ghcr.io/zentile/zentile:latest
 ```
 
 #### Local Development (.env.local)
 
 ```bash
+# Client-side Convex URL - must be accessible from browser
+NUXT_PUBLIC_CONVEX_URL=http://localhost:3210
+
+# Server-side Convex URL for admin operations (optional)
 CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
 
 # Optional: Override auto-generated admin key
@@ -245,24 +341,23 @@ MYSQL_URL=mysql://user:pass@host:3306
    npm run docker:prod
    ```
 
-2. **Configure Domain** (Optional):
+2. **Configure Public Domain** (Production):
 
    ```bash
-   # Update .env.prod
-   CONVEX_CLOUD_ORIGIN=https://api.yourdomain.com
-   CONVEX_SITE_ORIGIN=https://yourdomain.com
+   # Update .env
+   NUXT_PUBLIC_CONVEX_URL=https://convex.yourdomain.com
    ```
 
 3. **Set up Reverse Proxy** (nginx/Cloudflare):
-   - `yourdomain.com` → `localhost:3000`
-   - `api.yourdomain.com` → `localhost:3210`
-   - `dashboard.yourdomain.com` → `localhost:6791`
+   - `yourdomain.com` → `localhost:3000` (ZenTile app)
+   - `convex.yourdomain.com` → `localhost:3210` (Convex backend - must be public)
+   - `dashboard.yourdomain.com` → `localhost:6791` (Dashboard - optional)
 
 ### Resource Requirements
 
 | Service          | CPU     | Memory  | Storage  |
 | ---------------- | ------- | ------- | -------- |
-| ZenGrid          | 0.5     | 256MB   | -        |
+| ZenTile          | 0.5     | 256MB   | -        |
 | Convex Backend   | 1.0     | 512MB   | 1GB+     |
 | Convex Dashboard | 0.5     | 256MB   | -        |
 | **Total**        | **2.0** | **1GB** | **1GB+** |
@@ -325,5 +420,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with ❤️ using modern DevOps practices**
+**Built with ❤️ using modern web technologies and real-time data**
 

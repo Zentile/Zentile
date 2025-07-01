@@ -30,7 +30,8 @@ jobs:
 
     - name: Install dependencies and generate lockfile
       run: |
-        npm install
+        export NPM_CONFIG_LOGLEVEL=error
+        npm install --silent
         ls -la package-lock.json || echo "No package-lock.json generated"
 
     - name: Generate Convex files

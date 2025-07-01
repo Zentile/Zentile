@@ -1,26 +1,264 @@
 # Development overrides for docker-compose.yml
 services:
-  zengrid:
+  convex-dev:
     build:
-      target: builder
+      target: development
       cache_from:
-        - node:20-alpine
+        - node:24-alpine
+        - type=local,src=/tmp/.buildx-cache
+    user: root
+    working_dir: /app
     volumes:
       - .:/app
-      - /app/node_modules
-      - /app/.nuxt
-      - /app/.output
+      - zentile_node_modules:/app/node_modules
+      - admin_keys:/shared:ro
+      - convexdev_build_cache:/tmp/.buildx-cache
     environment:
       - NODE_ENV=development
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    command: >
+      sh -c '
+        apk add --no-cache curl;
+        echo "Waiting for admin key...";
+        while [ ! -f /shared/admin_key ]; do sleep 1; done;
+        echo "Admin key found.";
+
+        echo "Waiting for Convex backend to be ready...";
+        while ! curl -sf http://convex-backend:3210/version > /dev/null; do
+          echo "Backend not ready, waiting...";
+          sleep 2;
+        done;
+        echo "Backend is ready.";
+
+        export CONVEX_SELF_HOSTED_ADMIN_KEY=$(cat /shared/admin_key);
+        export CONVEX_SELF_HOSTED_URL=http://convex-backend:3210;
+        
+        echo "--- Convex Dev Environment Variables ---";
+        printenv;
+        echo "--------------------------------------";
+        
+        echo "--- Running initial deploy ---";
+        npx convex deploy;
+        
+        echo "--- Starting dev watcher ---";
+        npx convex dev;
+      '
+
+  zentile:
+    build:
+      target: development
+      cache_from:
+        - node:24-alpine
+        - type=local,src=/tmp/.buildx-cache
+    ports:
+      - "3000:3000"  # Expose Nuxt.js app
+    volumes:
+      - .:/app
+      - zentile_node_modules:/app/node_modules
+      - zentile_nuxt:/app/.nuxt
+      - zentile_output:/app/.output
+      - admin_keys:/shared:ro
+      - zentile_build_cache:/tmp/.buildx-cache
+    environment:
+      - NODE_ENV=development
+      # Client-side Convex URL - must be accessible from browser
+      - CONVEX_SELF_HOSTED_URL=http://localhost:3210
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      admin-key-generator:
+        condition: service_completed_successfully
+      convex-dev:
+        condition: service_started
     command: ["npm", "run", "dev"]
     stdin_open: true
     tty: true
 
   convex-backend:
+    image: ghcr.io/get-convex/convex-backend:latest
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    volumes:
+      - convex_data:/convex/data
+    ports:
+      - "3210:3210"  # Expose backend for client-side access
     environment:
+      - INSTANCE_NAME=convex
       - RUST_LOG=debug
       - DISABLE_BEACON=true
-    
-  convex-dashboard:
+      - POSTGRES_URL=postgres://convex:convex@postgres:5432
+      - DO_NOT_REQUIRE_SSL=1
+      # - AWS_REGION=us-east-1
+      # - AWS_ACCESS_KEY_ID=zentile
+      # - AWS_SECRET_ACCESS_KEY=b4acb48c1c6b183b9a75b84dca5b34c4ec66e7fc03b3b8375c17b4b6a464e082
+      # - CONVEX_S3_FORCE_PATH_STYLE=true
+      # - AWS_S3_FORCE_PATH_STYLE=true
+      # - S3_ENDPOINT_URL=http://minio:9000
+      # - S3_STORAGE_EXPORTS_BUCKET=convex-exports
+      # - S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET=convex-imports
+      # - S3_STORAGE_MODULES_BUCKET=convex-modules
+      # - S3_STORAGE_FILES_BUCKET=convex-files
+      # - S3_STORAGE_SEARCH_BUCKET=convex-search
+    healthcheck:
+      test: curl -f http://localhost:3210/version
+      interval: 5s
+      start_period: 10s
+    depends_on:
+      postgres: # Ensure Postgres is healthy before starting Convex
+        condition: service_healthy
+      init-db: # Ensure database is initialized before Convex starts
+        condition: service_completed_successfully
+      # minio: # Ensure Minio is healthy before starting Convex
+      #   condition: service_healthy
+      # minio-bucket-init: # Ensure Minio buckets are created before Convex starts
+      #   condition: service_completed_successfully
+
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
     environment:
-      - NODE_ENV=development
+      POSTGRES_DB: convex
+      POSTGRES_USER: convex
+      POSTGRES_PASSWORD: convex
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U convex"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  init-db:
+    image: postgres:15-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: convex
+    entrypoint:
+      - sh
+      - -c
+      - |
+        sleep 5
+        db_exists=$$(psql -h postgres -U convex -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='convex'")
+        if [ "$$db_exists" != "1" ]; then
+          psql -h postgres -U convex -d postgres -c "CREATE DATABASE convex"
+        else
+          echo "Database 'convex' already exists"
+        fi
+
+  # minio:
+  #   image: minio/minio:latest
+  #   command: server --console-address ":9001" /data
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   environment:
+  #     MINIO_ROOT_USER: zentile
+  #     MINIO_ROOT_PASSWORD: b4acb48c1c6b183b9a75b84dca5b34c4ec66e7fc03b3b8375c17b4b6a464e082
+  #   volumes:
+  #     - minio_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 30s
+  #     timeout: 20s
+  #     retries: 3
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "${DASHBOARD_PORT:-6791}:6791"
+    environment:
+      - NEXT_PUBLIC_DEPLOYMENT_URL=${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:${PORT:-3210}}
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+
+  admin-key-generator:
+    image: alpine:latest
+    volumes:
+      - admin_keys:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: >
+      sh -c "
+      if [ ! -f /shared/admin_key ]; then
+        echo 'Waiting for Convex backend to be ready...'
+        # Wait for backend to be accessible
+        while ! wget -q --spider http://convex-backend:3210/version; do
+          echo 'Backend not ready, waiting...'
+          sleep 2
+        done
+        echo 'Backend is ready, generating admin key...'
+        
+        # Install docker CLI and curl
+        apk add --no-cache docker-cli curl jq
+        
+        # Try to generate admin key using docker exec on the backend service
+        ADMIN_KEY=$$(docker exec zentile-convex-backend-1 ./generate_admin_key.sh 2>/dev/null | tail -1)
+        
+        if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"\" ] && [ \"$$ADMIN_KEY\" != \"null\" ]; then
+          echo \"$$ADMIN_KEY\" > /shared/admin_key
+          echo 'Admin key generated using backend script and saved to /shared/admin_key'
+          echo 'Admin key: '$$ADMIN_KEY
+        else
+          echo 'Failed to generate admin key using backend script, trying API...'
+          # Try the API approach as fallback
+          ADMIN_KEY=$$(curl -s -X POST http://convex-backend:3210/api/admin_key 2>/dev/null | jq -r '.admin_key' 2>/dev/null)
+          
+          if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"null\" ] && [ \"$$ADMIN_KEY\" != \"\" ]; then
+            echo \"$$ADMIN_KEY\" > /shared/admin_key
+            echo 'Admin key generated via API and saved to /shared/admin_key'
+            echo 'Admin key: '$$ADMIN_KEY
+          else
+            echo 'Both methods failed'
+          fi
+        fi
+      else
+        echo 'Admin key already exists, using existing key:'
+        cat /shared/admin_key
+      fi
+      "
+    restart: "no"
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+
+  # minio-bucket-init:
+  #   image: minio/mc:latest
+  #   depends_on:
+  #     minio:
+  #       condition: service_healthy
+  #   entrypoint: >
+  #     sh -c '
+  #       mc alias set zentile http://minio:9000 zentile b4acb48c1c6b183b9a75b84dca5b34c4ec66e7fc03b3b8375c17b4b6a464e082 && \
+  #       mc mb -p zentile/convex-exports || true && \
+  #       mc mb -p zentile/convex-imports || true && \
+  #       mc mb -p zentile/convex-modules || true && \
+  #       mc mb -p zentile/convex-files || true && \
+  #       mc mb -p zentile/convex-search || true
+  #     '
+  #   restart: "no"
+  #   networks:
+  #     - default
+
+volumes:
+  zentile_node_modules:
+  zentile_nuxt:
+  zentile_output:
+  admin_keys:
+  postgres_data:
+  # minio_data:
+  convex_data:
+  convexdev_build_cache:
+  zentile_build_cache:

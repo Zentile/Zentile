@@ -21,7 +21,9 @@ jobs:
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm ci
+      run: |
+        export NPM_CONFIG_LOGLEVEL=error
+        npm ci --silent
 
     - name: Generate Convex files
       run: |
@@ -49,9 +51,9 @@ jobs:
 
     - name: Test Docker build
       run: |
-        docker build --target deps -t zengrid:deps .
-        docker build --target builder -t zengrid:builder .
-        docker build --target runner -t zengrid:runner .
+        docker build --target deps -t zentile:deps .
+        docker build --target builder -t zentile:builder .
+        docker build --target runner -t zentile:runner .
 
   security:
     runs-on: ubuntu-latest

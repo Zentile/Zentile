@@ -13,6 +13,8 @@ services:
         condition: service_healthy
       init-db:
         condition: service_completed_successfully
+      admin-key-generator:
+        condition: service_completed_successfully
     command: >
       sh -c '
         # Wait for the admin key to become available

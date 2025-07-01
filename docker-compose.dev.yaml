@@ -62,7 +62,6 @@ services:
       - zentile_build_cache:/tmp/.buildx-cache
     environment:
       - NODE_ENV=development
-      # Client-side Convex URL - must be accessible from browser
       - CONVEX_SELF_HOSTED_URL=http://localhost:3210
     depends_on:
       convex-backend:
@@ -89,17 +88,6 @@ services:
       - DISABLE_BEACON=true
       - POSTGRES_URL=postgres://convex:convex@postgres:5432
       - DO_NOT_REQUIRE_SSL=1
-      # - AWS_REGION=us-east-1
-      # - AWS_ACCESS_KEY_ID=zentile
-      # - AWS_SECRET_ACCESS_KEY=b4acb48c1c6b183b9a75b84dca5b34c4ec66e7fc03b3b8375c17b4b6a464e082
-      # - CONVEX_S3_FORCE_PATH_STYLE=true
-      # - AWS_S3_FORCE_PATH_STYLE=true
-      # - S3_ENDPOINT_URL=http://minio:9000
-      # - S3_STORAGE_EXPORTS_BUCKET=convex-exports
-      # - S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET=convex-imports
-      # - S3_STORAGE_MODULES_BUCKET=convex-modules
-      # - S3_STORAGE_FILES_BUCKET=convex-files
-      # - S3_STORAGE_SEARCH_BUCKET=convex-search
     healthcheck:
       test: curl -f http://localhost:3210/version
       interval: 5s
@@ -109,10 +97,6 @@ services:
         condition: service_healthy
       init-db: # Ensure database is initialized before Convex starts
         condition: service_completed_successfully
-      # minio: # Ensure Minio is healthy before starting Convex
-      #   condition: service_healthy
-      # minio-bucket-init: # Ensure Minio buckets are created before Convex starts
-      #   condition: service_completed_successfully
 
   postgres:
     image: postgres:latest
@@ -154,23 +138,6 @@ services:
         else
           echo "Database 'convex' already exists"
         fi
-
-  # minio:
-  #   image: minio/minio:latest
-  #   command: server --console-address ":9001" /data
-  #   ports:
-  #     - "9000:9000"
-  #     - "9001:9001"
-  #   environment:
-  #     MINIO_ROOT_USER: zentile
-  #     MINIO_ROOT_PASSWORD: b4acb48c1c6b183b9a75b84dca5b34c4ec66e7fc03b3b8375c17b4b6a464e082
-  #   volumes:
-  #     - minio_data:/data
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-  #     interval: 30s
-  #     timeout: 20s
-  #     retries: 3
 
   convex-dashboard:
     image: ghcr.io/get-convex/convex-dashboard:latest
@@ -233,31 +200,12 @@ services:
       convex-backend:
         condition: service_healthy
 
-  # minio-bucket-init:
-  #   image: minio/mc:latest
-  #   depends_on:
-  #     minio:
-  #       condition: service_healthy
-  #   entrypoint: >
-  #     sh -c '
-  #       mc alias set zentile http://minio:9000 zentile b4acb48c1c6b183b9a75b84dca5b34c4ec66e7fc03b3b8375c17b4b6a464e082 && \
-  #       mc mb -p zentile/convex-exports || true && \
-  #       mc mb -p zentile/convex-imports || true && \
-  #       mc mb -p zentile/convex-modules || true && \
-  #       mc mb -p zentile/convex-files || true && \
-  #       mc mb -p zentile/convex-search || true
-  #     '
-  #   restart: "no"
-  #   networks:
-  #     - default
-
 volumes:
   zentile_node_modules:
   zentile_nuxt:
   zentile_output:
   admin_keys:
   postgres_data:
-  # minio_data:
   convex_data:
   convexdev_build_cache:
   zentile_build_cache:

@@ -136,27 +136,24 @@ services:
       - admin_keys:/shared
     command: >
       sh -c "
-      if [ ! -f /shared/admin_key ]; then
-        echo 'Waiting for Convex backend to be ready...'
-        apk add --no-cache curl jq
-        while ! curl -sf http://convex-backend:3210/version > /dev/null; do
-          echo 'Backend not ready, waiting...'
-          sleep 2
-        done
-        echo 'Backend is ready, generating admin key...'
-        
-        ADMIN_KEY=$$(curl -s -X POST http://convex-backend:3210/api/admin_key | jq -r '.admin_key')
-        
-        if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"null\" ]; then
-          echo \"$$ADMIN_KEY\" > /shared/admin_key
+      apk add --no-cache curl jq
+      echo 'Waiting for Convex backend to be ready...'
+      while ! curl -sf http://convex-backend:3210/version > /dev/null; do
+        echo 'Backend not ready, waiting...'
+        sleep 2
+      done
+      echo 'Backend is ready, generating admin key...'
+      while true; do
+        ADMIN_KEY=$(curl -s -X POST http://convex-backend:3210/api/admin_key | jq -r '.admin_key')
+        if [ -n "$ADMIN_KEY" ] && [ "$ADMIN_KEY" != "null" ]; then
+          echo "$ADMIN_KEY" > /shared/admin_key
           echo 'Admin key generated via API and saved to /shared/admin_key'
+          exit 0
         else
-          echo 'Failed to generate admin key'
-          exit 1
+          echo 'Failed to generate admin key, retrying in 2s...'
+          sleep 2
         fi
-      else
-        echo 'Admin key already exists.'
-      fi
+      done
       "
     restart: "no"
     depends_on:

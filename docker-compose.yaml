@@ -134,44 +134,28 @@ services:
     image: alpine:latest
     volumes:
       - admin_keys:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     command: >
       sh -c "
       if [ ! -f /shared/admin_key ]; then
         echo 'Waiting for Convex backend to be ready...'
-        # Wait for backend to be accessible
-        while ! wget -q --spider http://convex-backend:3210/version; do
+        apk add --no-cache curl jq
+        while ! curl -sf http://convex-backend:3210/version > /dev/null; do
           echo 'Backend not ready, waiting...'
           sleep 2
         done
         echo 'Backend is ready, generating admin key...'
         
-        # Install docker CLI and curl
-        apk add --no-cache docker-cli curl jq
+        ADMIN_KEY=$$(curl -s -X POST http://convex-backend:3210/api/admin_key | jq -r '.admin_key')
         
-        # Try to generate admin key using docker exec on the backend service
-        ADMIN_KEY=$$(docker exec zentile-convex-backend-1 ./generate_admin_key.sh 2>/dev/null | tail -1)
-        
-        if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"\" ] && [ \"$$ADMIN_KEY\" != \"null\" ]; then
+        if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"null\" ]; then
           echo \"$$ADMIN_KEY\" > /shared/admin_key
-          echo 'Admin key generated using backend script and saved to /shared/admin_key'
-          echo 'Admin key: '$$ADMIN_KEY
+          echo 'Admin key generated via API and saved to /shared/admin_key'
         else
-          echo 'Failed to generate admin key using backend script, trying API...'
-          # Try the API approach as fallback
-          ADMIN_KEY=$$(curl -s -X POST http://convex-backend:3210/api/admin_key 2>/dev/null | jq -r '.admin_key' 2>/dev/null)
-          
-          if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"null\" ] && [ \"$$ADMIN_KEY\" != \"\" ]; then
-            echo \"$$ADMIN_KEY\" > /shared/admin_key
-            echo 'Admin key generated via API and saved to /shared/admin_key'
-            echo 'Admin key: '$$ADMIN_KEY
-          else
-            echo 'Both methods failed'
-          fi
+          echo 'Failed to generate admin key'
+          exit 1
         fi
       else
-        echo 'Admin key already exists, using existing key:'
-        cat /shared/admin_key
+        echo 'Admin key already exists.'
       fi
       "
     restart: "no"

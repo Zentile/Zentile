@@ -1,39 +1,65 @@
 services:
-  zentile:
+  convex-deploy:
     build:
       context: .
-      target: runner
-    ports:
-      - "3000:3000"
+      target: builder
+      cache_from:
+        - node:24-alpine
+    user: root
+    working_dir: /app
+    volumes:
+      - .:/app
+      - zentile_node_modules:/app/node_modules
+      - admin_keys:/shared:ro
     environment:
-      - NODE_ENV=production
-      - CONVEX_SELF_HOSTED_URL=${CONVEX_SELF_HOSTED_URL:-http://convex-backend:3210}
+      - NODE_ENV=development
     depends_on:
       convex-backend:
         condition: service_healthy
-      init-db:
-        condition: service_completed_successfully
-      admin-key-generator:
-        condition: service_completed_successfully
     command: >
       sh -c '
-        # Wait for the admin key to become available
-        while [ ! -f /shared/admin_key ]; do
-          echo "Waiting for admin key...";
+        apk add --no-cache curl;
+        echo "Waiting for admin key...";
+        while [ ! -f /shared/admin_key ]; do sleep 1; done;
+        echo "Admin key found.";
+
+        echo "Waiting for Convex backend to be ready...";
+        while ! curl -sf http://convex-backend:3210/version > /dev/null; do
+          echo "Backend not ready, waiting...";
           sleep 2;
         done;
-        
-        # Export the admin key for Convex CLI
+        echo "Backend is ready.";
+
         export CONVEX_SELF_HOSTED_ADMIN_KEY=$(cat /shared/admin_key);
+        export CONVEX_SELF_HOSTED_URL=http://convex-backend:3210;
         
-        # Run Convex deployment
-        npx convex deploy --prod;
+        echo "--- Convex Dev Environment Variables ---";
+        printenv;
+        echo "--------------------------------------";
         
-        # Start the Nuxt application
-        node .output/server/index.mjs;
+        echo "--- Running initial deploy ---";
+        npx convex deploy;
       '
+    
+  zentile:
+    build:
+      context: .
+      target: development
+      cache_from:
+        - node:24-alpine
+    ports:
+      - "3000:3000"  # Expose Nuxt.js app
     volumes:
-      - admin_keys:/shared:ro # Mount admin key for deployment
+      - .:/app
+      - zentile_node_modules:/app/node_modules
+      - zentile_nuxt:/app/.nuxt
+      - zentile_output:/app/.output
+    environment:
+      - NODE_ENV=development
+      - CONVEX_SELF_HOSTED_URL=http://convex-backend:3210
+    depends_on:
+      convex-backend:
+        condition: service_healthy
 
   # Convex Backend Service
   convex-backend:
@@ -57,6 +83,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    networks:
+      - zentile-network
     deploy:
       resources:
         limits:
@@ -71,7 +99,7 @@ services:
 
   # Postgres Database Service
   postgres:
-    image: postgres:15-alpine
+    image: postgres:alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: convex
@@ -91,6 +119,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - zentile-network
 
   # Database Initialization Service
   init-db:
@@ -112,6 +142,8 @@ services:
           echo "Database 'convex' already exists"
         fi
     restart: "no"
+    networks:
+      - zentile-network
 
   convex-dashboard:
     image: ghcr.io/get-convex/convex-dashboard:latest
@@ -124,6 +156,8 @@ services:
     depends_on:
       convex-backend:
         condition: service_healthy
+    networks:
+      - zentile-network
 
   admin-key-generator:
     image: alpine:latest
@@ -131,29 +165,49 @@ services:
       - admin_keys:/shared
     command: >
       sh -c "
-      apk add --no-cache curl jq
-      echo 'Waiting for Convex backend to be ready...'
-      while ! curl -sf http://convex-backend:3210/version > /dev/null; do
-        echo 'Backend not ready, waiting...'
-        sleep 2
-      done
-      echo 'Backend is ready, generating admin key...'
-      while true; do
-        ADMIN_KEY=$(curl -s -X POST http://convex-backend:3210/api/admin_key | jq -r '.admin_key')
-        if [ -n "$ADMIN_KEY" ] && [ "$ADMIN_KEY" != "null" ]; then
-          echo "$ADMIN_KEY" > /shared/admin_key
-          echo 'Admin key generated via API and saved to /shared/admin_key'
-          exit 0
-        else
-          echo 'Failed to generate admin key, retrying in 2s...'
+      if [ ! -f /shared/admin_key ]; then
+        echo 'Waiting for Convex backend to be ready...'
+        # Wait for backend to be accessible
+        while ! wget -q --spider http://convex-backend:3210/version; do
+          echo 'Backend not ready, waiting...'
           sleep 2
+        done
+        echo 'Backend is ready, generating admin key...'
+        
+        # Install docker CLI and curl
+        apk add --no-cache docker-cli curl jq
+        
+        # Try to generate admin key using docker exec on the backend service
+        ADMIN_KEY=$$(docker exec zentile-convex-backend-1 ./generate_admin_key.sh 2>/dev/null | tail -1)
+        
+        if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"\" ] && [ \"$$ADMIN_KEY\" != \"null\" ]; then
+          echo \"$$ADMIN_KEY\" > /shared/admin_key
+          echo 'Admin key generated using backend script and saved to /shared/admin_key'
+          echo 'Admin key: '$$ADMIN_KEY
+        else
+          echo 'Failed to generate admin key using backend script, trying API...'
+          # Try the API approach as fallback
+          ADMIN_KEY=$$(curl -s -X POST http://convex-backend:3210/api/admin_key 2>/dev/null | jq -r '.admin_key' 2>/dev/null)
+          
+          if [ -n \"$$ADMIN_KEY\" ] && [ \"$$ADMIN_KEY\" != \"null\" ] && [ \"$$ADMIN_KEY\" != \"\" ]; then
+            echo \"$$ADMIN_KEY\" > /shared/admin_key
+            echo 'Admin key generated via API and saved to /shared/admin_key'
+            echo 'Admin key: '$$ADMIN_KEY
+          else
+            echo 'Both methods failed'
+          fi
         fi
-      done
+      else
+        echo 'Admin key already exists, using existing key:'
+        cat /shared/admin_key
+      fi
       "
     restart: "no"
     depends_on:
       convex-backend:
         condition: service_healthy
+    networks:
+      - zentile-network
 
 volumes:
   zentile_node_modules:
@@ -162,5 +216,7 @@ volumes:
   admin_keys:
   postgres_data:
   convex_data:
-  convexdev_build_cache:
-  zentile_build_cache:
+
+networks:
+  zentile-network:
+    driver: bridge
